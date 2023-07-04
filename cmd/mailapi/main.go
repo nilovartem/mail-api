@@ -14,7 +14,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&configPath, "config", "configs/mailapi.json", "path to config JSON file")
+	flag.StringVar(&configPath, "config", "configs/mailapi.json", "path to JSON file for server configuration")
 }
 func main() {
 	flag.Parse()
@@ -22,7 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%+v", c)
+	fmt.Printf("%+v\n", c)
 	s := mailapi.NewServer(c)
 	if err := s.Start(); err != nil {
 		logrus.Fatal(err)
