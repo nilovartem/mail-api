@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -64,15 +65,25 @@ func (s *Server) Auth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "\nUsername:", username)
 
 	var link string
-	if idx := slices.IndexFunc(s.Users, func(user User) bool { return user.username == username }); idx != -1 {
+	if idx := slices.IndexFunc(s.Users, func(user User) bool { return user.username == username && user.link != "" }); idx != -1 {
 		link = s.Users[idx].link
 		fmt.Fprint(w, "\nYour link:", link)
 		return
 	}
 	link = uuid.New().String()
 	s.Users = append(s.Users, User{username: username, link: link})
-	fmt.Fprint(w, "\nYour link:", link)
 	//start timer
+	go func() {
+		ticker := time.NewTicker(s.config.TTL)
+		for {
+			<-ticker.C
+			//link expired, "remove" it from list
+			if idx := slices.IndexFunc(s.Users, func(user User) bool { return user.link == link }); idx != -1 {
+				s.Users[idx].link = ""
+			}
+		}
+	}()
+	fmt.Fprint(w, "\nYour link:", link)
 	s.logger.Info(s.Users)
 }
 
