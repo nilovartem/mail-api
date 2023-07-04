@@ -8,18 +8,20 @@ import (
 
 // Config ...
 type Config struct {
-	Mailbox  string
-	TTL      time.Duration
-	LogLevel string
+	Mailbox     string
+	TTL         time.Duration
+	LogLevel    string
+	BindAddress string
 }
 
 // NewConfig ...
 func NewConfig(configPath string) (*Config, error) {
 	config := Config{}
 	var phony struct {
-		Mailbox  string `json:"mailbox"`
-		TTL      string `json:"ttl"`
-		LogLevel string `json:"log_level"`
+		Mailbox     string `json:"mailbox"`
+		TTL         string `json:"ttl"`
+		LogLevel    string `json:"log_level"`
+		BindAddress string `json:"bind_address"`
 	}
 	contents, err := os.ReadFile(configPath)
 	if err != nil {
@@ -33,5 +35,6 @@ func NewConfig(configPath string) (*Config, error) {
 	}
 	config.Mailbox = phony.Mailbox
 	config.LogLevel = phony.LogLevel
+	config.BindAddress = phony.BindAddress
 	return &config, nil
 }
