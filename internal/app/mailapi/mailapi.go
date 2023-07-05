@@ -5,101 +5,24 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/slices"
 )
 
-type User struct {
-	username string
-	link     string
-}
-
-// Mailapi ...
+// Server ...
 type Server struct {
-	config *Config
-	logger *logrus.Logger
-	Users  []User // User{username, link}
-	mutex  sync.Mutex
+	config  *Config
+	logger  *logrus.Logger
+	storage *Storage
 }
 
 // New ...
 func NewServer(c *Config) *Server {
 	return &Server{
-		config: c,
-		logger: logrus.New(),
-		Users:  []User{},
-		mutex:  sync.Mutex{},
+		config:  c,
+		logger:  logrus.New(),
+		storage: NewStorage(c),
 	}
-}
-
-var (
-	authRe   = regexp.MustCompile(`^\/[^\/]+$`)
-	getZipRe = regexp.MustCompile(`^\/get\/[^\/]+$`)
-)
-
-// ServeHTTP ...
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	//w.Header().Set("content-type", "application/json")
-	switch {
-	case r.Method == http.MethodPost && authRe.MatchString(r.URL.Path):
-		s.Auth(w, r)
-		return
-	case r.Method == http.MethodGet && getZipRe.MatchString(r.URL.Path):
-		s.GetZip(w, r)
-		return
-	default:
-		http.NotFound(w, r) //TODO: maybe if not allowed or if not match then not found
-		return
-	}
-
-}
-
-// Auth return UUID....
-func (s *Server) Auth(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Auth\n", r.URL.Path)
-	username := strings.Trim(r.URL.Path, "/")
-	fmt.Fprint(w, "\nUsername:", username)
-
-	var link string
-	if idx := slices.IndexFunc(s.Users, func(user User) bool { return user.username == username && user.link != "" }); idx != -1 {
-		link = s.Users[idx].link
-		fmt.Fprint(w, "\nYour link:", link)
-		return
-	}
-	link = uuid.New().String()
-	s.Users = append(s.Users, User{username: username, link: link})
-	//start timer
-	go func() {
-		ticker := time.NewTicker(s.config.TTL)
-		for {
-			<-ticker.C
-			//link expired, "remove" it from list
-			if idx := slices.IndexFunc(s.Users, func(user User) bool { return user.link == link }); idx != -1 {
-				s.Users[idx].link = ""
-			}
-		}
-	}()
-	fmt.Fprint(w, "\nYour link:", link)
-	s.logger.Info(s.Users)
-}
-
-// GetZip returns zip by UUID
-func (s *Server) GetZip(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Get\n", r.URL.Path)
-	link := strings.Replace(r.URL.Path, "/", "", -1)
-	link = strings.Replace(link, "get", "", 1)
-	fmt.Fprint(w, "\nLink:", link)
-	//if link is exist (and not expired) return ZIP
-	if idx := slices.IndexFunc(s.Users, func(user User) bool { return user.link == link }); idx != -1 {
-		username := s.Users[idx].username
-		fmt.Fprint(w, "\nYour ZIP:", username)
-		return
-	}
-	fmt.Fprint(w, "\nNo zip for you:")
 }
 
 // Start ...
@@ -107,11 +30,94 @@ func (s *Server) Start() error {
 	if err := s.configureLogger(); err != nil {
 		return err
 	}
+	//inflate storage with users (emails)
+	err := s.storage.Inflate()
+	if err != nil {
+		return err
+	}
 	s.logger.Infoln("starting server")
 	mux := http.NewServeMux()
 	mux.Handle("/", s)
 	mux.Handle("/get/", s)
 	return http.ListenAndServe(s.config.BindAddress, mux)
+}
+
+var (
+	getLinkRe = regexp.MustCompile(`^\/[^\/]+$`)
+	getFileRe = regexp.MustCompile(`^\/get\/[^\/]+$`)
+)
+
+// ServeHTTP ...
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPost && getLinkRe.MatchString(r.URL.Path):
+		err := s.GetLink(w, r)
+		if err != nil {
+			s.logger.Errorln(err)
+		}
+		return
+	case r.Method == http.MethodGet && getFileRe.MatchString(r.URL.Path):
+		s.GetFile(w, r)
+		return
+	default:
+		http.NotFound(w, r) //TODO: maybe if not allowed or if not match then not found
+		return
+	}
+}
+
+// GetLink return UUID....
+func (s *Server) GetLink(w http.ResponseWriter, r *http.Request) error {
+	fmt.Fprint(w, "GetLink\n", r.URL.Path)
+	mail := strings.Trim(r.URL.Path, "/")
+	fmt.Fprint(w, "\nmail:", mail)
+	u, hasLink, err := s.storage.FindByMail(mail)
+	if err != nil {
+		fmt.Fprint(w, "\nUser not found")
+		return err
+	}
+	if hasLink {
+		link := u.Link
+		fmt.Fprint(w, "\nOld link:", link)
+		return nil
+	}
+	//if not found
+	u.NewLink(s.config.TTL)
+	fmt.Fprint(w, "\nNew link:", u.Link)
+	s.logger.Info(s.storage.users)
+	return nil
+}
+
+// GetZip returns zip by UUID
+func (s *Server) GetFile(w http.ResponseWriter, r *http.Request) {
+	link := strings.Replace(r.URL.Path, "/", "", -1) //TODO: костыль №1
+	link = strings.Replace(link, "get", "", 1)       //TODO: костыль №2
+	if u, found := s.storage.FindByLink(link); found {
+		fmt.Fprint(w, "\nYour mail is:", u.Mail)
+		return
+		//zip time
+	}
+	fmt.Fprint(w, "\nNo zip for you")
+	/*
+		//fmt.Fprint(w, "Get\n", r.URL.Path)
+		link := strings.Replace(r.URL.Path, "/", "", -1)
+		link = strings.Replace(link, "get", "", 1)
+		//fmt.Fprint(w, "\nLink:", link)
+		//if link is exist (and not expired) return ZIP
+		if idx := slices.IndexFunc(s.Users, func(user *User) bool { return user.link == link }); idx != -1 {
+			mail := s.Users[idx].mail
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", mail))
+			zip, err := s.ZipHandler(mail)
+			if err != nil {
+				s.logger.Errorln(err)
+				return
+			}
+			//w.Write(zip)
+			w.Write(zip)
+			return
+		}
+		fmt.Fprint(w, "\nNo zip for you:")
+	*/
 }
 
 // configureLogger ...

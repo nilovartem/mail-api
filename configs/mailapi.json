@@ -1,6 +1,6 @@
 {
-    "mailbox":"/Users/artem/go/src/mail-api/mail",
-    "ttl" : "10s",
+    "mailbox":"/Users/artem/go/src/mail-api/test/data/mail",
+    "ttl" : "20s",
     "log_level": "debug",
     "bind_address": "localhost:8080"
 }
