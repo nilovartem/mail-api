@@ -3,6 +3,7 @@ package mailapi
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -57,7 +58,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	case r.Method == http.MethodGet && getFileRe.MatchString(r.URL.Path):
-		s.GetFile(w, r)
+		err := s.GetFile(w, r)
+		if err != nil {
+			s.logger.Errorln(err)
+		}
 		return
 	default:
 		http.NotFound(w, r) //TODO: maybe if not allowed or if not match then not found
@@ -88,36 +92,25 @@ func (s *Server) GetLink(w http.ResponseWriter, r *http.Request) error {
 }
 
 // GetZip returns zip by UUID
-func (s *Server) GetFile(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GetFile(w http.ResponseWriter, r *http.Request) error {
 	link := strings.Replace(r.URL.Path, "/", "", -1) //TODO: костыль №1
 	link = strings.Replace(link, "get", "", 1)       //TODO: костыль №2
 	if u, found := s.storage.FindByLink(link); found {
-		fmt.Fprint(w, "\nYour mail is:", u.Mail)
-		return
-		//zip time
+		s.logger.Infoln("\nYour mail is:", u.Mail)
+		//TODO: zip time
+		zip, err := u.Zip(filepath.Join(s.config.Mailbox, u.Mail), u.Mail)
+		if err != nil {
+			s.logger.Errorln(err)
+			return err
+		}
+		s.logger.Infoln("buffer size if ", len(zip))
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", u.Mail))
+		w.Write(zip)
+		return nil
 	}
 	fmt.Fprint(w, "\nNo zip for you")
-	/*
-		//fmt.Fprint(w, "Get\n", r.URL.Path)
-		link := strings.Replace(r.URL.Path, "/", "", -1)
-		link = strings.Replace(link, "get", "", 1)
-		//fmt.Fprint(w, "\nLink:", link)
-		//if link is exist (and not expired) return ZIP
-		if idx := slices.IndexFunc(s.Users, func(user *User) bool { return user.link == link }); idx != -1 {
-			mail := s.Users[idx].mail
-			w.Header().Set("Content-Type", "application/zip")
-			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", mail))
-			zip, err := s.ZipHandler(mail)
-			if err != nil {
-				s.logger.Errorln(err)
-				return
-			}
-			//w.Write(zip)
-			w.Write(zip)
-			return
-		}
-		fmt.Fprint(w, "\nNo zip for you:")
-	*/
+	return nil
 }
 
 // configureLogger ...
