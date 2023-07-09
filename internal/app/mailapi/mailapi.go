@@ -7,23 +7,25 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/nilovartem/mail-api/internal/app/config"
 	"github.com/sirupsen/logrus"
 )
 
 // Server ...
 type Server struct {
-	config  *Config
+	config  *config.Config
 	logger  *logrus.Logger
 	storage *Storage
 }
 
-// New ...
-func NewServer(c *Config) *Server {
+// NewServer ...
+func NewServer(c *config.Config) *Server {
 	return &Server{
 		config:  c,
 		logger:  logrus.New(),
-		storage: NewStorage(c),
+		storage: NewStorage(),
 	}
 }
 
@@ -33,12 +35,10 @@ func (s *Server) Start() error {
 	if err := s.configureLogger(); err != nil {
 		return err
 	}
-	s.storage.Inflate(&s.config.Users)
-
 	mux := http.NewServeMux()
 
 	PostHandler := http.HandlerFunc(s.postHandler)
-	mux.Handle("/", s.serveHTTP(s.auth(PostHandler)))
+	mux.Handle("/", s.serveHTTP(s.staticAuth(PostHandler)))
 
 	GetHandler := http.HandlerFunc(s.getHandler)
 	mux.Handle("/get/", s.serveHTTP(GetHandler))
@@ -47,17 +47,17 @@ func (s *Server) Start() error {
 }
 
 var (
-	getLinkRe = regexp.MustCompile(`^\/[^\/]+$`)
-	getFileRe = regexp.MustCompile(`^\/get\/[^\/]+$`)
+	postHandlerRe = regexp.MustCompile(`^\/[^\/]+$`)
+	getHandlerRe  = regexp.MustCompile(`^\/get\/[^\/]+$`)
 )
 
-// ServeHTTP ...
+// serveHTTP ...
 func (s *Server) serveHTTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPost && getLinkRe.MatchString(r.URL.Path):
+		case r.Method == http.MethodPost && postHandlerRe.MatchString(r.URL.Path):
 			next.ServeHTTP(w, r)
-		case r.Method == http.MethodGet && getFileRe.MatchString(r.URL.Path):
+		case r.Method == http.MethodGet && getHandlerRe.MatchString(r.URL.Path):
 			next.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
@@ -65,12 +65,12 @@ func (s *Server) serveHTTP(next http.Handler) http.Handler {
 	})
 }
 
-// auth ...
-func (s *Server) auth(next http.Handler) http.Handler {
+// staticAuth ...
+func (s *Server) staticAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		usernamePath := strings.Trim(r.URL.Path, "/")
+		usernameURL := strings.Trim(r.URL.Path, "/")
 		username, password, ok := r.BasicAuth()
-		if ok && username == usernamePath {
+		if ok && username == usernameURL {
 			if passwordHash, found := s.config.Users[username]; found {
 				if passwordHash == sha256.Sum256([]byte(password)) {
 					next.ServeHTTP(w, r)
@@ -85,29 +85,37 @@ func (s *Server) auth(next http.Handler) http.Handler {
 
 // postHandler returns UUID....
 func (s *Server) postHandler(w http.ResponseWriter, r *http.Request) {
-	mail := strings.Trim(r.URL.Path, "/")
-	u, hasLink := s.storage.FindByMail(mail)
-	if !hasLink {
-		u.NewLink(s.config.TTL)
+	username := strings.Trim(r.URL.Path, "/")
+	link, found := s.storage.GetLink(username)
+	if !found {
+		link = s.storage.Add(username)
+		go func() {
+			ticker := time.NewTicker(s.config.TTL)
+			for {
+				<-ticker.C
+				s.storage.Remove(link)
+			}
+		}()
 	}
-	fmt.Fprint(w, s.config.BindAddress+"/get/"+u.Link)
+	fmt.Fprint(w, "/get/"+link)
 }
 
 // getHandler returns zip by UUID
 func (s *Server) getHandler(w http.ResponseWriter, r *http.Request) {
 	link := strings.Replace(r.URL.Path, "/get/", "", -1)
-	if u, found := s.storage.FindByLink(link); found {
-		zip, err := u.Zip(filepath.Join(s.config.Mailbox, u.Mail), u.Mail)
+	if u, found := s.storage.GetUser(link); found {
+		zip, err := u.Zip(filepath.Join(s.config.Mailbox, u.Username), u.Username, s.config.PDF)
 		if err != nil {
+			http.Error(w, "zip error", http.StatusInternalServerError)
 			s.logger.Errorln(err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", u.Mail))
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", u.Username))
 		w.Write(zip)
 		return
 	}
-	fmt.Fprint(w, "No zip for you")
+	http.Error(w, "link expired", http.StatusBadRequest)
 }
 
 // configureLogger ...

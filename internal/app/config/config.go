@@ -1,4 +1,4 @@
-package mailapi
+package config
 
 import (
 	"crypto/sha256"
@@ -14,10 +14,11 @@ type Config struct {
 	LogLevel    string
 	BindAddress string
 	Users       map[string][32]byte
+	PDF         string
 }
 
 // NewConfig ...
-func NewConfig(configPath string) (*Config, error) {
+func NewConfig(configPath string, pdfPath string) (*Config, error) {
 	config := Config{}
 	var phony struct {
 		Mailbox     string            `json:"mailbox"`
@@ -43,6 +44,6 @@ func NewConfig(configPath string) (*Config, error) {
 	for key, value := range phony.Users {
 		config.Users[key] = sha256.Sum256([]byte(value))
 	}
-	//TODO: check map empty or not
+	config.PDF = pdfPath
 	return &config, nil
 }

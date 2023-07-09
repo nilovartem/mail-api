@@ -3,59 +3,34 @@ package model
 import (
 	"archive/zip"
 	"bytes"
-	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
-
-	"github.com/google/uuid"
-)
-
-const (
-	NO_LINK = ""
 )
 
 // User ...
 type User struct {
-	Mail string
-	Link string
-	//TODO: maybe i need mutex for this
-}
-
-// NewLink ...
-func (u *User) NewLink(ttl time.Duration) {
-	u.Link = uuid.New().String()
-	go func() {
-		ticker := time.NewTicker(ttl)
-		for {
-			<-ticker.C
-			u.Link = NO_LINK
-		}
-	}()
-}
-
-// relativePath ...
-func relativePath(path string, anchor string) string {
-	_, filename, _ := strings.Cut(path, anchor)
-	filename = anchor + filename
-	return filename
+	Username string
 }
 
 // Zip ...
-func (u *User) Zip(filename string, mail string) ([]byte, error) {
+func (u *User) Zip(mail string, root string, pdf string) ([]byte, error) {
 	archive := bytes.NewBuffer(nil)
 	w := zip.NewWriter(archive)
-	walker := func(path string, info os.FileInfo, err error) error {
-		filename = relativePath(path, mail)
+	walker := func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			filename = fmt.Sprintf("%s%c", filename, os.PathSeparator)
-			_, err = w.Create(filename)
+		if filepath.Base(path) == root {
+			return nil
+		}
+		filename, err := filepath.Rel(mail, path)
+		if err != nil {
 			return err
+		}
+		if entry.IsDir() {
+			return filepath.SkipDir
 		}
 		file, err := os.Open(path)
 		if err != nil {
@@ -72,10 +47,32 @@ func (u *User) Zip(filename string, mail string) ([]byte, error) {
 		}
 		return nil
 	}
-	err := filepath.Walk(filename, walker)
+	err := filepath.WalkDir(mail, walker)
+	if err != nil {
+		return nil, err
+	}
+	err = addPDF(w, pdf)
 	if err != nil {
 		return nil, err
 	}
 	w.Close()
 	return archive.Bytes(), nil
+}
+
+// addPDF ...
+func addPDF(w *zip.Writer, pdf string) error {
+	pdfFile, err := os.Open(pdf)
+	if err != nil {
+		return err
+	}
+	defer pdfFile.Close()
+	pdfWriter, err := w.Create(filepath.Base(pdf))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(pdfWriter, pdfFile)
+	if err != nil {
+		return err
+	}
+	return nil
 }

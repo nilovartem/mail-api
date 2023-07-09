@@ -2,24 +2,26 @@ package main
 
 import (
 	"flag"
-	"log"
 
+	"github.com/nilovartem/mail-api/internal/app/config"
 	"github.com/nilovartem/mail-api/internal/app/mailapi"
 	"github.com/sirupsen/logrus"
 )
 
 var (
-	configPath string
+	configPath = "configs/mailapi.json"
+	pdfPath    = "static/readme.pdf"
 )
 
 func init() {
-	flag.StringVar(&configPath, "config", "configs/mailapi.json", "path to JSON file for server configuration")
+	flag.StringVar(&configPath, "config", configPath, "path to JSON file for server configuration")
+	flag.StringVar(&pdfPath, "pdf", pdfPath, "path to PDF file")
 }
 func main() {
 	flag.Parse()
-	c, err := mailapi.NewConfig(configPath)
+	c, err := config.NewConfig(configPath, pdfPath)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	s := mailapi.NewServer(c)
 	if err := s.Start(); err != nil {

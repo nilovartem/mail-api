@@ -3,47 +3,62 @@ package mailapi
 import (
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/nilovartem/mail-api/internal/app/model"
-	"golang.org/x/exp/slices"
+)
+
+const (
+	NO_LINK = ""
 )
 
 // Storage ...
 type Storage struct {
-	users  []*model.User
-	mutex  sync.Mutex
-	config *Config
+	users map[string]*model.User
+	mutex sync.Mutex
 }
 
 // NewStorage ...
-func NewStorage(c *Config) *Storage {
+func NewStorage() *Storage {
 	return &Storage{
-		users:  []*model.User{},
-		mutex:  sync.Mutex{},
-		config: c,
+		users: make(map[string]*model.User),
 	}
 }
 
-// Inflate ...
-func (s *Storage) Inflate(users *map[string][32]byte) {
-	for u := range *users {
-		s.users = append(s.users, &model.User{Mail: u, Link: model.NO_LINK})
-	}
+// Add ...
+func (s *Storage) Add(username string) string {
+	s.mutex.Lock()
+	link := uuid.New().String()
+	u := &model.User{Username: username}
+	s.users[link] = u
+	s.mutex.Unlock()
+	return link
 }
 
-// FindByMail ...
-func (s *Storage) FindByMail(mail string) (*model.User, bool) {
-	id := slices.IndexFunc(s.users, func(user *model.User) bool { return user.Mail == mail })
-	if s.users[id].Link != model.NO_LINK {
-		return s.users[id], true
-	}
-	return s.users[id], false
+// Remove ...
+func (s *Storage) Remove(link string) {
+	s.mutex.Lock()
+	delete(s.users, link)
+	s.mutex.Unlock()
 }
 
-// FindByLink
-func (s *Storage) FindByLink(link string) (*model.User, bool) {
-	var id int
-	if id = slices.IndexFunc(s.users, func(user *model.User) bool { return user.Link == link }); id != -1 {
-		return s.users[id], true
+// GetLink ...
+func (s *Storage) GetLink(username string) (string, bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	for link, user := range s.users { //TODO: кринж
+		if user.Username == username {
+			return link, true
+		}
+	}
+	return NO_LINK, false
+}
+
+// GetUser ...
+func (s *Storage) GetUser(link string) (*model.User, bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if user, found := s.users[link]; found {
+		return user, true
 	}
 	return nil, false
 }

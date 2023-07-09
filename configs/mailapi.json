@@ -1,12 +1,12 @@
 {
-    "mailbox":"/Users/artem/go/src/mail-api/test/data/mail",
-    "ttl" : "30s",
+    "mailbox":"/Users/artem/go/src/mail-api/test/data/mailbox",
+    "ttl" : "20s",
     "log_level": "debug",
     "bind_address": "localhost:8080",
     "users":{
-        "beck.cierra@wb.ru":"beck123",
-        "karlenko.anton@wb.ru":"karlenko123",
-        "newton.alejandra@wb.ru":"newton123",
-        "patrick.sharon@wb.ru":"patrick123"
+        "beck.cierra@wb.ru":"beck",
+        "karlenko.anton@wb.ru":"karlenko",
+        "newton.alejandra@wb.ru":"newton",
+        "patrick.sharon@wb.ru":"patrick"
     }
 }
