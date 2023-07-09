@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 
 	"github.com/nilovartem/mail-api/internal/app/mailapi"
@@ -22,7 +21,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%+v\n", c)
 	s := mailapi.NewServer(c)
 	if err := s.Start(); err != nil {
 		logrus.Fatal(err)

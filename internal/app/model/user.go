@@ -13,27 +13,30 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	NO_LINK = ""
+)
+
 // User ...
 type User struct {
 	Mail string
 	Link string
+	//TODO: maybe i need mutex for this
 }
 
 // NewLink ...
-func (u *User) NewLink(ttl time.Duration) { //start & return timer & return User
+func (u *User) NewLink(ttl time.Duration) {
 	u.Link = uuid.New().String()
-	//start timer
 	go func() {
 		ticker := time.NewTicker(ttl)
 		for {
 			<-ticker.C
-			//link expired, "remove" it from list
-			u.Link = ""
+			u.Link = NO_LINK
 		}
 	}()
 }
 
-// relativePath
+// relativePath ...
 func relativePath(path string, anchor string) string {
 	_, filename, _ := strings.Cut(path, anchor)
 	filename = anchor + filename
@@ -71,9 +74,8 @@ func (u *User) Zip(filename string, mail string) ([]byte, error) {
 	}
 	err := filepath.Walk(filename, walker)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	w.Close()
-	fmt.Println(len(archive.Bytes()))
 	return archive.Bytes(), nil
 }

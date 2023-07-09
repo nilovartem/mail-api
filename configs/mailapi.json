@@ -1,6 +1,12 @@
 {
     "mailbox":"/Users/artem/go/src/mail-api/test/data/mail",
-    "ttl" : "20s",
+    "ttl" : "30s",
     "log_level": "debug",
-    "bind_address": "localhost:8080"
+    "bind_address": "localhost:8080",
+    "users":{
+        "beck.cierra@wb.ru":"beck123",
+        "karlenko.anton@wb.ru":"karlenko123",
+        "newton.alejandra@wb.ru":"newton123",
+        "patrick.sharon@wb.ru":"patrick123"
+    }
 }

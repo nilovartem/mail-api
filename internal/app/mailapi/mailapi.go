@@ -1,6 +1,7 @@
 package mailapi
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -28,18 +29,20 @@ func NewServer(c *Config) *Server {
 
 // Start ...
 func (s *Server) Start() error {
+	s.logger.Infof("Starting server on %s\n", s.config.BindAddress)
 	if err := s.configureLogger(); err != nil {
 		return err
 	}
-	//inflate storage with users (emails)
-	err := s.storage.Inflate()
-	if err != nil {
-		return err
-	}
-	s.logger.Infoln("starting server")
+	s.storage.Inflate(&s.config.Users)
+
 	mux := http.NewServeMux()
-	mux.Handle("/", s)
-	mux.Handle("/get/", s)
+
+	PostHandler := http.HandlerFunc(s.postHandler)
+	mux.Handle("/", s.serveHTTP(s.auth(PostHandler)))
+
+	GetHandler := http.HandlerFunc(s.getHandler)
+	mux.Handle("/get/", s.serveHTTP(GetHandler))
+
 	return http.ListenAndServe(s.config.BindAddress, mux)
 }
 
@@ -49,68 +52,62 @@ var (
 )
 
 // ServeHTTP ...
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.Method == http.MethodPost && getLinkRe.MatchString(r.URL.Path):
-		err := s.GetLink(w, r)
-		if err != nil {
-			s.logger.Errorln(err)
+func (s *Server) serveHTTP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && getLinkRe.MatchString(r.URL.Path):
+			next.ServeHTTP(w, r)
+		case r.Method == http.MethodGet && getFileRe.MatchString(r.URL.Path):
+			next.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
 		}
-		return
-	case r.Method == http.MethodGet && getFileRe.MatchString(r.URL.Path):
-		err := s.GetFile(w, r)
-		if err != nil {
-			s.logger.Errorln(err)
-		}
-		return
-	default:
-		http.NotFound(w, r) //TODO: maybe if not allowed or if not match then not found
-		return
-	}
+	})
 }
 
-// GetLink return UUID....
-func (s *Server) GetLink(w http.ResponseWriter, r *http.Request) error {
-	fmt.Fprint(w, "GetLink\n", r.URL.Path)
+// auth ...
+func (s *Server) auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		usernamePath := strings.Trim(r.URL.Path, "/")
+		username, password, ok := r.BasicAuth()
+		if ok && username == usernamePath {
+			if passwordHash, found := s.config.Users[username]; found {
+				if passwordHash == sha256.Sum256([]byte(password)) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+		}
+		w.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	})
+}
+
+// postHandler returns UUID....
+func (s *Server) postHandler(w http.ResponseWriter, r *http.Request) {
 	mail := strings.Trim(r.URL.Path, "/")
-	fmt.Fprint(w, "\nmail:", mail)
-	u, hasLink, err := s.storage.FindByMail(mail)
-	if err != nil {
-		fmt.Fprint(w, "\nUser not found")
-		return err
+	u, hasLink := s.storage.FindByMail(mail)
+	if !hasLink {
+		u.NewLink(s.config.TTL)
 	}
-	if hasLink {
-		link := u.Link
-		fmt.Fprint(w, "\nOld link:", link)
-		return nil
-	}
-	//if not found
-	u.NewLink(s.config.TTL)
-	fmt.Fprint(w, "\nNew link:", u.Link)
-	s.logger.Info(s.storage.users)
-	return nil
+	fmt.Fprint(w, s.config.BindAddress+"/get/"+u.Link)
 }
 
-// GetZip returns zip by UUID
-func (s *Server) GetFile(w http.ResponseWriter, r *http.Request) error {
-	link := strings.Replace(r.URL.Path, "/", "", -1) //TODO: костыль №1
-	link = strings.Replace(link, "get", "", 1)       //TODO: костыль №2
+// getHandler returns zip by UUID
+func (s *Server) getHandler(w http.ResponseWriter, r *http.Request) {
+	link := strings.Replace(r.URL.Path, "/get/", "", -1)
 	if u, found := s.storage.FindByLink(link); found {
-		s.logger.Infoln("\nYour mail is:", u.Mail)
-		//TODO: zip time
 		zip, err := u.Zip(filepath.Join(s.config.Mailbox, u.Mail), u.Mail)
 		if err != nil {
 			s.logger.Errorln(err)
-			return err
+			return
 		}
-		s.logger.Infoln("buffer size if ", len(zip))
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", u.Mail))
 		w.Write(zip)
-		return nil
+		return
 	}
-	fmt.Fprint(w, "\nNo zip for you")
-	return nil
+	fmt.Fprint(w, "No zip for you")
 }
 
 // configureLogger ...
