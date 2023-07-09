@@ -46,4 +46,4 @@ Request
 
 Response
 
-    ZIP архив с почтой
+    ZIP архив с почтой + PDF
