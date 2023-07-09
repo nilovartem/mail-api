@@ -1,3 +1,5 @@
 build:
-	go build -v ./cmd/mailapi
+	go build -o ./bin/mailapi ./cmd/mailapi
+run:
+	./bin/mailapi
 .DEFAULT_GOAL := build
