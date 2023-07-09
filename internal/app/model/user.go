@@ -9,12 +9,11 @@ import (
 	"path/filepath"
 )
 
-// User ...
 type User struct {
 	Username string
 }
 
-// Zip ...
+// Zip compresses folder "mail" into archive and IGNORES folders in "mail" - for speed purposes
 func (u *User) Zip(mail string, root string, pdf string) ([]byte, error) {
 	archive := bytes.NewBuffer(nil)
 	w := zip.NewWriter(archive)
@@ -59,7 +58,7 @@ func (u *User) Zip(mail string, root string, pdf string) ([]byte, error) {
 	return archive.Bytes(), nil
 }
 
-// addPDF ...
+// addPDF adds pdf to archive
 func addPDF(w *zip.Writer, pdf string) error {
 	pdfFile, err := os.Open(pdf)
 	if err != nil {

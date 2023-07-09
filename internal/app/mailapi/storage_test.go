@@ -15,7 +15,6 @@ var (
 	}
 )
 
-// TestNewLink ...
 func TestNewLink(t *testing.T) {
 	storage := NewStorage()
 	for _, uname := range usernames {

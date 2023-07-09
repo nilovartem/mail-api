@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Config ...
+// Config contains all info from JSON file...
 type Config struct {
 	Mailbox     string
 	TTL         time.Duration
@@ -17,7 +17,7 @@ type Config struct {
 	PDF         string
 }
 
-// NewConfig ...
+// NewConfig creates config and adjusts values from JSON
 func NewConfig(configPath string, pdfPath string) (*Config, error) {
 	config := Config{}
 	var phony struct {

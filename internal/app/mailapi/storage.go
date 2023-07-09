@@ -11,20 +11,18 @@ const (
 	NO_LINK = ""
 )
 
-// Storage ...
 type Storage struct {
 	users map[string]*model.User
 	mutex sync.Mutex
 }
 
-// NewStorage ...
 func NewStorage() *Storage {
 	return &Storage{
 		users: make(map[string]*model.User),
 	}
 }
 
-// Add ...
+// Add creates new entry - link[user]
 func (s *Storage) Add(username string) string {
 	s.mutex.Lock()
 	link := uuid.New().String()
@@ -34,18 +32,18 @@ func (s *Storage) Add(username string) string {
 	return link
 }
 
-// Remove ...
+// Remove removes entry - link[user]
 func (s *Storage) Remove(link string) {
 	s.mutex.Lock()
 	delete(s.users, link)
 	s.mutex.Unlock()
 }
 
-// GetLink ...
+// GetLink returns link
 func (s *Storage) GetLink(username string) (string, bool) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	for link, user := range s.users { //TODO: кринж
+	for link, user := range s.users {
 		if user.Username == username {
 			return link, true
 		}
@@ -53,7 +51,7 @@ func (s *Storage) GetLink(username string) (string, bool) {
 	return NO_LINK, false
 }
 
-// GetUser ...
+// GetUser return user
 func (s *Storage) GetUser(link string) (*model.User, bool) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

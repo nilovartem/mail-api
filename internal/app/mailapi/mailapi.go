@@ -13,14 +13,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Server ...
 type Server struct {
 	config  *config.Config
 	logger  *logrus.Logger
 	storage *Storage
 }
 
-// NewServer ...
 func NewServer(c *config.Config) *Server {
 	return &Server{
 		config:  c,
@@ -29,7 +27,7 @@ func NewServer(c *config.Config) *Server {
 	}
 }
 
-// Start ...
+// Start function starts listening and implements the router
 func (s *Server) Start() error {
 	s.logger.Infof("Starting server on %s\n", s.config.BindAddress)
 	if err := s.configureLogger(); err != nil {
@@ -46,12 +44,13 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(s.config.BindAddress, mux)
 }
 
+// regexp for handle routes
 var (
 	postHandlerRe = regexp.MustCompile(`^\/[^\/]+$`)
 	getHandlerRe  = regexp.MustCompile(`^\/get\/[^\/]+$`)
 )
 
-// serveHTTP ...
+// serveHTTP dispathes requests between handlers...
 func (s *Server) serveHTTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -65,7 +64,7 @@ func (s *Server) serveHTTP(next http.Handler) http.Handler {
 	})
 }
 
-// staticAuth ...
+// staticAuth checks credentials and passes hanldle functions to postHandler
 func (s *Server) staticAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		usernameURL := strings.Trim(r.URL.Path, "/")
@@ -83,7 +82,7 @@ func (s *Server) staticAuth(next http.Handler) http.Handler {
 	})
 }
 
-// postHandler returns UUID....
+// postHandler responds with link - old or new
 func (s *Server) postHandler(w http.ResponseWriter, r *http.Request) {
 	username := strings.Trim(r.URL.Path, "/")
 	link, found := s.storage.GetLink(username)
@@ -100,7 +99,7 @@ func (s *Server) postHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "/get/"+link)
 }
 
-// getHandler returns zip by UUID
+// getHandler responds to valid link with zip
 func (s *Server) getHandler(w http.ResponseWriter, r *http.Request) {
 	link := strings.Replace(r.URL.Path, "/get/", "", -1)
 	if u, found := s.storage.GetUser(link); found {
@@ -118,7 +117,7 @@ func (s *Server) getHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "link expired", http.StatusBadRequest)
 }
 
-// configureLogger ...
+// configureLogger sets logLevel
 func (s *Server) configureLogger() error {
 	level, err := logrus.ParseLevel(s.config.LogLevel)
 	if err != nil {

@@ -3,8 +3,6 @@ package model
 import (
 	"path/filepath"
 	"testing"
-
-	"github.com/nilovartem/mail-api/internal/app/config"
 )
 
 var users = []*User{
@@ -14,14 +12,9 @@ var users = []*User{
 	{Username: "patrick.sharon@wb.ru"},
 }
 
-// TestZip ...
 func TestZip(t *testing.T) {
-	config, err := config.NewConfig("/Users/artem/go/src/mail-api/configs/mailapi.json", "/Users/artem/go/src/mail-api/static/readme.pdf")
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, u := range users {
-		zip, err := u.Zip(filepath.Join(config.Mailbox, u.Username), u.Username, config.PDF)
+		zip, err := u.Zip(filepath.Join("/Users/artem/go/src/mail-api/test/data/mailbox", u.Username), u.Username, "/Users/artem/go/src/mail-api/static/readme.pdf")
 		if err != nil {
 			t.Fatal(err)
 		}
